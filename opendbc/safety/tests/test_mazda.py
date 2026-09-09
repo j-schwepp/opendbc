@@ -191,7 +191,8 @@ class TestMazdaSafety(common.CarSafetyTest, common.DriverTorqueSteeringSafetyTes
         for addr, msg in ((0x243, self._torque_cmd_msg(0)), (0x440, self._laneinfo_msg())):
           fwd_bus = 0 if stock_active else -1
           self.assertEqual(fwd_bus, self.safety.safety_fwd_hook(2, addr), f"{mads=} {controls_allowed=} {controls_allowed_lateral=} {addr=:#x}")
-          self.assertEqual(not stock_active, self._tx(msg), f"openpilot tx {mads=} {controls_allowed=} {controls_allowed_lateral=} {addr=:#x}")
+          expected_tx = True if addr == 0x440 else not stock_active
+          self.assertEqual(expected_tx, self._tx(msg), f"openpilot tx {mads=} {controls_allowed=} {controls_allowed_lateral=} {addr=:#x}")
     self.safety.set_mads_params(False, False, False)
 
   def _cam_tja_press(self, ctr=5, **overrides):

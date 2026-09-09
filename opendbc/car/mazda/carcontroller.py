@@ -14,6 +14,7 @@ from opendbc.car.mazda.values import CarControllerParams, Buttons, MazdaFlags
 from opendbc.sunnypilot.car.mazda.icbm import IntelligentCruiseButtonManagementInterface
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
+AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
 # Send synthetic radar frames to both consumers; panda does not forward locally generated frames.
@@ -127,11 +128,18 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     can_sends.extend(self.update_camera_tja(CC, CS))
 
     # send HUD alerts
-    if self.frame % 50 == 0:
-      ldw = CC.hudControl.visualAlert == VisualAlert.ldw
-      steer_required = CC.hudControl.visualAlert == VisualAlert.steerRequired
-      # TODO: find a way to silence audible warnings so we can add more hud alerts
-      steer_required = steer_required and CS.lkas_allowed_speed
+    ldw = CC.hudControl.visualAlert == VisualAlert.ldw
+    steer_required = CC.hudControl.visualAlert == VisualAlert.steerRequired
+    is_take_control_alert = steer_required and (
+      CC.hudControl.audibleAlert in (
+        AudibleAlert.warningSoft,
+        AudibleAlert.warningImmediate,
+      ) or not CC.latActive
+    )
+    # Suppress routine hands-on-wheel warnings below LKAS min speed, but always show critical take-control alerts
+    steer_required = steer_required and (CS.lkas_allowed_speed or is_take_control_alert)
+
+    if (self.frame % 50 == 0) or (is_take_control_alert and self.frame % 10 == 0):
       can_sends.append(mazdacan.create_alert_command(self.packer, CS.cam_laneinfo, ldw, steer_required))
 
     # send steering command

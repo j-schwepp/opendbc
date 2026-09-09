@@ -291,7 +291,7 @@ static bool mazda_tx_hook(const CANPacket_t *msg) {
   }
 
   // Run after steering checks, which reset rate-limit state while disengaged.
-  if (main_bus && mazda_is_lka_addr(msg->addr) && !mazda_openpilot_controlling()) {
+  if (main_bus && (msg->addr == MAZDA_LKAS) && !mazda_openpilot_controlling()) {
     tx = false;
   }
 
