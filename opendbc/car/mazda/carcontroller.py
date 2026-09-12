@@ -15,7 +15,6 @@ from opendbc.sunnypilot.car.mazda.icbm import IntelligentCruiseButtonManagementI
 from opendbc.sunnypilot.car.stock_ecu import StockEcuState
 
 VisualAlert = structs.CarControl.HUDControl.VisualAlert
-AudibleAlert = structs.CarControl.HUDControl.AudibleAlert
 LongCtrlState = structs.CarControl.Actuators.LongControlState
 
 # Send synthetic radar frames to both consumers; panda does not forward locally generated frames.
@@ -53,6 +52,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.tja_press_count = 0
     self.tja_press_frame: int | None = None
     self.tja_episode_alerted = False
+    self.alert_active_prev = False
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -131,17 +131,12 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # send HUD alerts
     ldw = CC.hudControl.visualAlert == VisualAlert.ldw
     steer_required = CC.hudControl.visualAlert == VisualAlert.steerRequired
-    is_take_control_alert = steer_required and (
-      CC.hudControl.audibleAlert in (
-        AudibleAlert.warningSoft,
-        AudibleAlert.warningImmediate,
-      ) or not CC.latActive
-    )
-    # Suppress routine hands-on-wheel warnings below LKAS min speed, but always show critical take-control alerts
-    steer_required = steer_required and (CS.lkas_allowed_speed or is_take_control_alert)
 
-    if (self.frame % 50 == 0) or (is_take_control_alert and self.frame % 10 == 0):
+    alert_active = steer_required or ldw
+    # Send at 10 Hz when alert is active or immediately on transition to cleared; 2 Hz idle
+    if (self.frame % 50 == 0) or (alert_active and self.frame % 10 == 0) or (self.alert_active_prev and not alert_active):
       can_sends.append(mazdacan.create_alert_command(self.packer, CS.cam_laneinfo, ldw, steer_required))
+    self.alert_active_prev = alert_active
 
     # send steering command
     can_sends.append(mazdacan.create_steering_control(self.packer, self.CP,

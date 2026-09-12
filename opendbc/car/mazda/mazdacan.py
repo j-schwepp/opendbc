@@ -183,6 +183,15 @@ def create_alert_command(packer, cam_msg: dict, ldw: bool, steer_required: bool)
     "LDW_WARN_LL": 0,
     "LDW_WARN_RL": 0,
   })
+
+  # The Mazda cluster/HUD requires active lane lines to display the steering wheel warning icon.
+  # When braking or at standstill, the camera sets LANE_LINES to 0 or 1. Force at least 2 active
+  # lines and LINE_VISIBLE=1 so the warning icon renders reliably regardless of vehicle state or speed.
+  if steer_required:
+    values["LANE_LINES"] = values["LANE_LINES"] if values["LANE_LINES"] in (2, 3, 4) else 2
+    values["LINE_VISIBLE"] = 1
+    values["LINE_NOT_VISIBLE"] = 0
+
   return packer.make_can_msg("CAM_LANEINFO", 0, values)
 
 
