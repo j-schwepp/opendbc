@@ -52,7 +52,6 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.tja_press_count = 0
     self.tja_press_frame: int | None = None
     self.tja_episode_alerted = False
-    self.alert_active_prev = False
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -129,14 +128,10 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     can_sends.extend(self.update_camera_tja(CC, CS))
 
     # send HUD alerts
-    ldw = CC.hudControl.visualAlert == VisualAlert.ldw
-    steer_required = CC.hudControl.visualAlert == VisualAlert.steerRequired
-
-    alert_active = steer_required or ldw
-    # Send at 10 Hz when alert is active or immediately on transition to cleared; 2 Hz idle
-    if (self.frame % 50 == 0) or (alert_active and self.frame % 10 == 0) or (self.alert_active_prev and not alert_active):
+    if self.frame % 50 == 0:
+      ldw = CC.hudControl.visualAlert == VisualAlert.ldw
+      steer_required = CC.hudControl.visualAlert == VisualAlert.steerRequired
       can_sends.append(mazdacan.create_alert_command(self.packer, CS.cam_laneinfo, ldw, steer_required))
-    self.alert_active_prev = alert_active
 
     # send steering command
     can_sends.append(mazdacan.create_steering_control(self.packer, self.CP,

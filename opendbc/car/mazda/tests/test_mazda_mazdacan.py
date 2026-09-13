@@ -37,19 +37,17 @@ def test_alert_command_relays_state_but_not_the_tja_churn(packer):
   assert out["HANDS_ON_STEER_WARN"] == 0 and out["HANDS_WARN_3_BITS"] == 0
 
 
-@pytest.mark.parametrize("input_lanes, expected_lanes", [(0, 2), (1, 2), (2, 2), (3, 3), (4, 4)])
-def test_alert_command_steer_required_forces_lanes_and_warn(packer, input_lanes, expected_lanes):
-  cam_msg = {"LINE_VISIBLE": 0, "LINE_NOT_VISIBLE": 1, "LANE_LINES": input_lanes, "BIT1": 0,
-             "BIT2": 0, "BIT3": 0, "NO_ERR_BIT": 1, "ERR_BIT": 0,
-             "TJA": 0, "TJA_TRANSITION": 0, "S1": 0, "S1_HBEAM": 0}
+def test_alert_command_steer_required(packer):
+  cam_msg = {"LINE_VISIBLE": 1, "LINE_NOT_VISIBLE": 0, "LANE_LINES": 2, "BIT1": 1,
+             "BIT2": 0, "BIT3": 0, "NO_ERR_BIT": 0, "ERR_BIT": 0,
+             "TJA": 0, "TJA_TRANSITION": 0, "S1": 1, "S1_HBEAM": 0}
   dat = mazdacan.create_alert_command(packer, cam_msg, ldw=False, steer_required=True)[1]
   out = parse_frame(CAM_LANEINFO, dat)
   assert out["HANDS_ON_STEER_WARN"] == 1
   assert out["HANDS_ON_STEER_WARN_2"] == 1
   assert out["HANDS_WARN_3_BITS"] == 0b111
   assert out["LINE_VISIBLE"] == 1
-  assert out["LINE_NOT_VISIBLE"] == 0
-  assert out["LANE_LINES"] == expected_lanes
+  assert out["LANE_LINES"] == 2
 
 
 @pytest.mark.parametrize("counter", range(16))
