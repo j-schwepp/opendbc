@@ -7,7 +7,9 @@ from opendbc.car.mazda.carcontroller import CarController
 from opendbc.car.mazda.carstate import CarState
 from opendbc.car.mazda.radar_interface import RadarInterface
 from opendbc.car.mazda.values import DBC, G46L_RADAR_FW, LKAS_LIMITS, STEER_TO_ZERO_EPS_FW, STEER_TO_ZERO_PLATFORMS, SUPPORTED_PLATFORMS, MazdaFlags, \
-  MazdaSafetyFlags, platform_from_vin
+  MazdaSafetyFlags, WMI, platform_from_vin
+from opendbc.car.vin import Vin, is_valid_vin
+from opendbc.sunnypilot.car.mazda.values import MazdaFlagsSP
 
 
 class CarInterface(CarInterfaceBase):
@@ -87,9 +89,34 @@ class CarInterface(CarInterfaceBase):
 
     # A carried-forward CarPlatformBundle can disagree with the physical car after a
     # hardware swap or a branch switch without reinstall.
+    # Oceania clusters over-read the held cruise speed (MazdaFlagsSP.OCEANIA_CLUSTER).
+    if is_valid_vin(stock_cp.carVin) and Vin(stock_cp.carVin).wmi == WMI.OCEANIA_EXPORT:
+      ret.flags |= MazdaFlagsSP.OCEANIA_CLUSTER
+
     vin_platform = platform_from_vin(stock_cp.carVin)
     if vin_platform is not None and vin_platform != str(candidate):
       carlog.warning({"event": "platformBundleVinMismatch", "bundle": str(candidate), "vin_platform": vin_platform,
                       "hint": "the selected platform bundle does not match the VIN's platform"})
 
     return ret
+
+  def update(self, can_packets):
+    """Latch the camera's last CAM_LANEINFO payload and staleness for the white-wheel HUD gate."""
+    # card sends [(t, frames), ...]; the model tests send one bare (t, frames) tuple. CANParser.update takes both.
+    if can_packets and not isinstance(can_packets[0], (list, tuple)):
+      can_packets = [can_packets]
+    raw, received = self.CS.cam_laneinfo_raw, False
+    for _t, frames in can_packets:
+      if not frames:
+        continue
+      # tests pass CanData objects; card passes plain (addr, dat, src) tuples
+      if hasattr(frames[0], "address"):
+        hits = [(m.dat, m.src) for m in frames if m.address == 0x440]
+      else:
+        hits = [(m[1], m[2]) for m in frames if m[0] == 0x440]
+      for dat, src in hits:
+        if src == 2 and len(dat) == 8:
+          raw, received = bytes(dat), True
+    self.CS.cam_laneinfo_raw = raw
+    self.CS.cam_laneinfo_stale_frames = 0 if received else self.CS.cam_laneinfo_stale_frames + 1
+    return super().update(can_packets)
