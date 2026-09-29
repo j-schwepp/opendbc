@@ -66,6 +66,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     # The white wheel rides the alert frame; on_bus tracks that the white bit is on the wire.
     self.mads_white_hud_off_frames = 0
     self.mads_white_hud_on_bus = False
+    self.alert_active_prev = False
 
   def update(self, CC, CC_SP, CS, now_nanos):
     can_sends = []
@@ -302,8 +303,18 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     white = white_allowed and self.mads_white_hud_off_frames >= MADS_WHITE_HUD_OFF_CONFIRM_FRAMES
     withdraw_now = self.mads_white_hud_on_bus and not white
 
+    alert_active = steer_required or ldw
+    send_hud = (
+      (self.frame % 50 == 0) or
+      (alert_active and self.frame % 10 == 0) or
+      (self.alert_active_prev and not alert_active) or
+      (alert_active and not self.alert_active_prev) or
+      withdraw_now
+    )
+    self.alert_active_prev = alert_active
+
     # Preserve the normal 2 Hz cadence; the exception is the immediate OEM withdraw.
-    if self.frame % 50 == 0 or withdraw_now:
+    if send_hud:
       payload = hud_base if white else alert[1]
       alert = (alert[0], mazdacan.apply_mads_white_hud(fsc_raw, payload, white), alert[2])
       self.mads_white_hud_on_bus = mazdacan.is_mads_white_hud(alert[1])
