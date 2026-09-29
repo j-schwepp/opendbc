@@ -80,6 +80,7 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
     self.lead_icon = LeadIcon()
     self.dash_steer_warning = DashSteerWarning()
     self.dash_warning_on_bus = False
+    self.alert_active_prev = False
 
   def update(self, CC, CC_SP, CS, now_nanos):
     CS.update_mads_feedback(CC, CC_SP)
@@ -189,10 +190,17 @@ class CarController(CarControllerBase, IntelligentCruiseButtonManagementInterfac
                                                     CS.out.brakePressed)
     white = self.update_white_hud(CC, CC_SP, CS, self.radar_session.handback_active)
 
-    # Preserve the normal 2 Hz cadence; the exception is the immediate withdraw of anything
-    # the last frame asserted.
-    withdraw_now = (self.mads_white_hud_on_bus and not white) or (self.dash_warning_on_bus and not steer_required)
-    if self.frame % HUD_ALERT_FRAMES == 0 or withdraw_now:
+    alert_active = steer_required or (visual_alert == VisualAlert.ldw)
+    send_hud = (
+      (self.frame % HUD_ALERT_FRAMES == 0) or
+      (alert_active and self.frame % 10 == 0) or
+      (self.alert_active_prev and not alert_active) or
+      (alert_active and not self.alert_active_prev) or
+      withdraw_now
+    )
+    self.alert_active_prev = alert_active
+
+    if send_hud:
       alert = mazdacan.create_alert_command(self.packer, CS.cam_laneinfo, visual_alert == VisualAlert.ldw, steer_required)
       self.dash_warning_on_bus = steer_required
       return [self.white_hud_frame(CS, alert, white)]

@@ -49,6 +49,43 @@ def test_alert_command_sends_the_frame_the_cluster_draws(packer, steer_required)
   assert out["LDW_WARN_LL"] == 0 and out["LDW_WARN_RL"] == 0
 
 
+@pytest.mark.parametrize("input_lanes, expected_lanes", [(0, 2), (1, 2), (2, 2), (3, 3), (4, 4)])
+def test_alert_command_steer_required_forces_lanes_and_warn(packer, input_lanes, expected_lanes):
+  cam_msg = {"LINE_VISIBLE": 0, "LINE_NOT_VISIBLE": 1, "LANE_LINES": input_lanes, "BIT1": 0,
+             "BIT2": 0, "BIT3": 0, "NO_ERR_BIT": 1, "ERR_BIT": 0,
+             "TJA": 0, "TJA_TRANSITION": 0, "S1": 0, "S1_HBEAM": 0}
+  dat = mazdacan.create_alert_command(packer, cam_msg, ldw=False, steer_required=True)[1]
+  out = parse_frame(CAM_LANEINFO, dat)
+  assert out["HANDS_ON_STEER_WARN"] == 1
+  assert out["HANDS_ON_STEER_WARN_2"] == 1
+  assert out["HANDS_WARN_3_BITS"] == 0b111
+  assert out["LINE_VISIBLE"] == 1
+  assert out["LINE_NOT_VISIBLE"] == 0
+  assert out["LANE_LINES"] == expected_lanes
+
+
+WHITE_HUD_BASE = bytes.fromhex("4201000000001040")  # the canonical OFF-family idle base
+
+
+def test_white_hud_allowlist_maps_tja_states_to_their_idle_base():
+  # a frame that already carries a TJA/transition state maps back to its idle base
+  assert mazdacan.white_hud_allowlist_base(bytes.fromhex("4201000020001040")) == WHITE_HUD_BASE
+  # the counter-nibble twins are separately audited entries, not normalized away
+  assert mazdacan.white_hud_allowlist_base(bytes.fromhex("4201000000001060")) == bytes.fromhex("4201000000001060")
+
+
+def test_apply_mads_white_hud_only_touches_an_allowlisted_base():
+  assert mazdacan.apply_mads_white_hud(WHITE_HUD_BASE, WHITE_HUD_BASE, True) == bytes.fromhex("4201000020001040")
+  assert mazdacan.apply_mads_white_hud(b"\xff" * 8, b"\xff" * 8, True) == b"\xff" * 8
+  assert mazdacan.apply_mads_white_hud(WHITE_HUD_BASE, WHITE_HUD_BASE, False) == WHITE_HUD_BASE
+
+
+def test_is_mads_white_hud_requires_the_exact_xor():
+  assert mazdacan.is_mads_white_hud(bytes.fromhex("4201000020001040"))
+  assert not mazdacan.is_mads_white_hud(WHITE_HUD_BASE)
+  assert not mazdacan.is_mads_white_hud(bytes.fromhex("4201000030001040"))
+
+
 def test_buttons_never_carry_the_tja_bit(packer):
   # never pressed by openpilot on either bus: on the car's side it toggles MADS and arms MRCC,
   # on the camera's side it switches the car's own lane-keep setting off
